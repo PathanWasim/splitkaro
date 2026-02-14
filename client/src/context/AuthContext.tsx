@@ -13,7 +13,7 @@ interface AuthContextType {
     token: string | null;
     login: (email: string, password: string) => Promise<void>;
     register: (email: string, password: string, name: string, upiId?: string) => Promise<void>;
-    logout: () => void;
+    logout: () => Promise<void>;
     updateProfile: (data: { name?: string; upiId?: string }) => Promise<void>;
     loading: boolean;
 }
@@ -37,26 +37,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const login = async (email: string, password: string) => {
         const res = await api.post('/auth/login', { email, password });
-        const { user: u, token: t } = res.data.data;
+        const { user: u, accessToken, refreshToken } = res.data.data;
         setUser(u);
-        setToken(t);
-        localStorage.setItem('splitkaro_token', t);
+        setToken(accessToken);
+        localStorage.setItem('splitkaro_token', accessToken);
+        localStorage.setItem('splitkaro_refresh_token', refreshToken);
         localStorage.setItem('splitkaro_user', JSON.stringify(u));
     };
 
     const register = async (email: string, password: string, name: string, upiId?: string) => {
         const res = await api.post('/auth/register', { email, password, name, upiId });
-        const { user: u, token: t } = res.data.data;
+        const { user: u, accessToken, refreshToken } = res.data.data;
         setUser(u);
-        setToken(t);
-        localStorage.setItem('splitkaro_token', t);
+        setToken(accessToken);
+        localStorage.setItem('splitkaro_token', accessToken);
+        localStorage.setItem('splitkaro_refresh_token', refreshToken);
         localStorage.setItem('splitkaro_user', JSON.stringify(u));
     };
 
-    const logout = () => {
+    const logout = async () => {
+        try {
+            const refreshToken = localStorage.getItem('splitkaro_refresh_token');
+            if (refreshToken) {
+                await api.post('/auth/logout', { refreshToken });
+            }
+        } catch {
+            // Ignore errors during logout
+        }
         setUser(null);
         setToken(null);
         localStorage.removeItem('splitkaro_token');
+        localStorage.removeItem('splitkaro_refresh_token');
         localStorage.removeItem('splitkaro_user');
     };
 

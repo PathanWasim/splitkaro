@@ -22,6 +22,40 @@ export class AuthController {
         }
     }
 
+    static async refresh(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { refreshToken } = req.body;
+            if (!refreshToken) {
+                return res.status(400).json({ success: false, error: 'Refresh token is required' });
+            }
+            const tokens = await authService.refreshAccessToken(refreshToken);
+            res.json({ success: true, data: tokens });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    static async logout(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { refreshToken } = req.body;
+            if (refreshToken) {
+                await authService.logout(refreshToken);
+            }
+            res.json({ success: true, message: 'Logged out successfully' });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    static async logoutAll(req: Request, res: Response, next: NextFunction) {
+        try {
+            await authService.logoutAllDevices(req.user!.userId);
+            res.json({ success: true, message: 'Logged out from all devices' });
+        } catch (error) {
+            next(error);
+        }
+    }
+
     static async getProfile(req: Request, res: Response, next: NextFunction) {
         try {
             const user = await authService.getProfile(req.user!.userId);

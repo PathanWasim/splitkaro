@@ -6,7 +6,11 @@ const expensesService = new ExpensesService();
 export class ExpensesController {
     static async create(req: Request, res: Response, next: NextFunction) {
         try {
-            const result = await expensesService.createExpense(req.params.groupId as string, req.body);
+            const result = await expensesService.createExpense(
+                req.params.groupId as string,
+                req.user!.userId,
+                req.body
+            );
             res.status(201).json({ success: true, data: result });
         } catch (error) {
             next(error);
@@ -37,6 +41,7 @@ export class ExpensesController {
         try {
             const result = await expensesService.adjustExpense(
                 req.params.groupId as string,
+                req.user!.userId,
                 req.params.expenseId as string,
                 req.body
             );

@@ -2,6 +2,8 @@ import { AppError } from '../../utils/AppError';
 import { ExpensesRepository } from './expenses.repository';
 import { CreateExpenseInput, AdjustExpenseInput } from './expenses.schema';
 import { computeSettlements, BalanceEntry } from '../../utils/settlementEngine';
+import { auditService } from '../audit/audit.service';
+import { emitToGroup } from '../../config/socket';
 
 export class ExpensesService {
     private repo: ExpensesRepository;
@@ -10,10 +12,10 @@ export class ExpensesService {
         this.repo = new ExpensesRepository();
     }
 
-    async createExpense(groupId: string, input: CreateExpenseInput) {
+    async createExpense(groupId: string, userId: string, input: CreateExpenseInput) {
         const splits = this.calculateSplits(input);
 
-        return this.repo.create({
+        const result = await this.repo.create({
             groupId,
             paidBy: input.paidBy,
             amount: input.amount,
@@ -22,6 +24,18 @@ export class ExpensesService {
             entryType: 'original',
             splits,
         });
+
+        auditService.log({
+            actorUserId: userId,
+            entityType: 'expense',
+            entityId: result.expense.id,
+            action: 'created',
+            metadata: { group_id: groupId, amount: input.amount, description: input.description },
+        });
+
+        emitToGroup(groupId, 'expense:created', { groupId, expense: result.expense });
+
+        return result;
     }
 
     async getExpenses(groupId: string, page: number = 1, limit: number = 20) {
@@ -38,7 +52,7 @@ export class ExpensesService {
         return { expense, splits, adjustments };
     }
 
-    async adjustExpense(groupId: string, expenseId: string, input: AdjustExpenseInput) {
+    async adjustExpense(groupId: string, userId: string, expenseId: string, input: AdjustExpenseInput) {
         // Verify original expense exists
         const original = await this.repo.findById(expenseId);
         if (!original) throw AppError.notFound('Original expense not found');
@@ -72,6 +86,16 @@ export class ExpensesService {
             parentId: expenseId,
             splits,
         });
+
+        auditService.log({
+            actorUserId: userId,
+            entityType: 'expense',
+            entityId: expenseId,
+            action: 'adjusted',
+            metadata: { group_id: groupId, amount: input.amount, original_expense_id: expenseId },
+        });
+
+        emitToGroup(groupId, 'expense:adjusted', { groupId, expenseId, reversal, corrected });
 
         return { reversal, corrected };
     }

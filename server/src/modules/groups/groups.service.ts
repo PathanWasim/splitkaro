@@ -2,6 +2,7 @@ import { AppError } from '../../utils/AppError';
 import { GroupsRepository } from './groups.repository';
 import { AuthRepository } from '../auth/auth.repository';
 import { CreateGroupInput, InviteToGroupInput } from './groups.schema';
+import { auditService } from '../audit/audit.service';
 
 export class GroupsService {
     private repo: GroupsRepository;
@@ -13,11 +14,21 @@ export class GroupsService {
     }
 
     async createGroup(userId: string, input: CreateGroupInput) {
-        return this.repo.create({
+        const group = await this.repo.create({
             name: input.name,
             type: input.type,
             createdBy: userId,
         });
+
+        auditService.log({
+            actorUserId: userId,
+            entityType: 'group',
+            entityId: group.id,
+            action: 'created',
+            metadata: { group_id: group.id, name: input.name, type: input.type },
+        });
+
+        return group;
     }
 
     async getUserGroups(userId: string) {
@@ -32,7 +43,7 @@ export class GroupsService {
         return { group, members };
     }
 
-    async inviteMember(groupId: string, input: InviteToGroupInput) {
+    async inviteMember(groupId: string, inviterId: string, input: InviteToGroupInput) {
         // Find user by email
         const user = await this.authRepo.findByEmail(input.email);
         if (!user) {
@@ -45,7 +56,17 @@ export class GroupsService {
             throw AppError.conflict('User is already a member of this group');
         }
 
-        return this.repo.addMember(groupId, user.id);
+        const result = await this.repo.addMember(groupId, user.id);
+
+        auditService.log({
+            actorUserId: inviterId,
+            entityType: 'group',
+            entityId: groupId,
+            action: 'invited',
+            metadata: { group_id: groupId, affected_user_id: user.id, email: input.email },
+        });
+
+        return result;
     }
 
     async removeMember(groupId: string, userId: string, requesterId: string) {
@@ -61,5 +82,13 @@ export class GroupsService {
         }
 
         await this.repo.removeMember(groupId, userId);
+
+        auditService.log({
+            actorUserId: requesterId,
+            entityType: 'group',
+            entityId: groupId,
+            action: 'removed',
+            metadata: { group_id: groupId, affected_user_id: userId },
+        });
     }
 }

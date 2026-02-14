@@ -3,6 +3,8 @@ import { SettlementsRepository } from './settlements.repository';
 import { CreateSettlementInput, UpdateSettlementInput } from './settlements.schema';
 import { generateUPILink } from '../../utils/upiLinkGenerator';
 import { queryOne } from '../../config/database';
+import { auditService } from '../audit/audit.service';
+import { emitToGroup } from '../../config/socket';
 
 export class SettlementsService {
     private repo: SettlementsRepository;
@@ -53,6 +55,16 @@ export class SettlementsService {
             upiLink,
         });
 
+        auditService.log({
+            actorUserId: payerId,
+            entityType: 'settlement',
+            entityId: settlement.id,
+            action: 'created',
+            metadata: { group_id: groupId, amount: input.amount, payee_id: input.payeeId },
+        });
+
+        emitToGroup(groupId, 'settlement:created', { groupId, settlementId: settlement.id });
+
         return { settlement, upiLink };
     }
 
@@ -76,7 +88,30 @@ export class SettlementsService {
             );
         }
 
-        return this.repo.recordPayment(settlementId, input.amount, input.note);
+        const updated = await this.repo.recordPayment(settlementId, input.amount, input.note);
+
+        auditService.log({
+            actorUserId: userId,
+            entityType: 'settlement',
+            entityId: settlementId,
+            action: 'settled',
+            metadata: {
+                group_id: settlement.group_id,
+                amount: input.amount,
+                new_status: updated.status,
+                payer_id: settlement.payer_id,
+                payee_id: settlement.payee_id,
+            },
+        });
+
+        emitToGroup(settlement.group_id, 'settlement:paid', {
+            groupId: settlement.group_id,
+            settlementId,
+            newStatus: updated.status,
+            amount: input.amount,
+        });
+
+        return updated;
     }
 
     async getSettlements(groupId: string, status?: string) {

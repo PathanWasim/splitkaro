@@ -1,7 +1,8 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, useCallback, FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api/client';
 import { formatCurrency, formatDate } from '../utils/formatCurrency';
+import { useSocket } from '../hooks/useSocket';
 import toast from 'react-hot-toast';
 
 interface GroupDetail {
@@ -53,11 +54,7 @@ export default function GroupDetail() {
     const [activeTab, setActiveTab] = useState<'expenses' | 'balances' | 'settlements'>('expenses');
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        if (groupId) fetchGroupData();
-    }, [groupId]);
-
-    const fetchGroupData = async () => {
+    const fetchGroupData = useCallback(async () => {
         try {
             const [groupRes, expensesRes, balancesRes, settlementsRes] = await Promise.all([
                 api.get(`/groups/${groupId}`),
@@ -75,7 +72,20 @@ export default function GroupDetail() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [groupId]);
+
+    useEffect(() => {
+        if (groupId) fetchGroupData();
+    }, [groupId, fetchGroupData]);
+
+    // Real-time updates via WebSocket
+    useSocket({
+        groupId,
+        onExpenseCreated: () => { toast.success('New expense added!'); fetchGroupData(); },
+        onExpenseAdjusted: () => { toast.success('Expense adjusted!'); fetchGroupData(); },
+        onSettlementCreated: () => { toast.success('New settlement created!'); fetchGroupData(); },
+        onSettlementPaid: () => { toast.success('Settlement updated!'); fetchGroupData(); },
+    });
 
     const handleInvite = async (e: FormEvent) => {
         e.preventDefault();

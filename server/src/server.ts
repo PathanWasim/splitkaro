@@ -1,6 +1,8 @@
+import { createServer } from 'http';
 import app from './app';
 import { env } from './config/env';
 import { pool } from './config/database';
+import { initializeSocket } from './config/socket';
 
 async function main() {
     try {
@@ -9,13 +11,18 @@ async function main() {
         console.log('✅ Database connected successfully');
         client.release();
 
+        // Create HTTP server and attach Socket.IO
+        const httpServer = createServer(app);
+        initializeSocket(httpServer);
+
         // Start server
-        app.listen(env.PORT, () => {
+        httpServer.listen(env.PORT, () => {
             console.log(`
 🚀 SplitKaro API Server
 ────────────────────────
 📍 URL:         http://localhost:${env.PORT}
 🏥 Health:      http://localhost:${env.PORT}/api/health
+🔌 WebSocket:   ws://localhost:${env.PORT}
 🌍 Environment: ${env.NODE_ENV}
 ────────────────────────
       `);
@@ -27,3 +34,4 @@ async function main() {
 }
 
 main();
+

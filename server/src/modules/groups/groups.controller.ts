@@ -33,7 +33,11 @@ export class GroupsController {
 
     static async invite(req: Request, res: Response, next: NextFunction) {
         try {
-            const member = await groupsService.inviteMember(req.params.groupId as string, req.body);
+            const member = await groupsService.inviteMember(
+                req.params.groupId as string,
+                req.user!.userId,
+                req.body
+            );
             res.status(201).json({ success: true, data: { member } });
         } catch (error) {
             next(error);
