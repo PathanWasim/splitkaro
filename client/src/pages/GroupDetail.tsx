@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api/client';
-import { formatCurrency, formatDate } from '../utils/formatCurrency';
+import { formatCurrency } from '../utils/formatCurrency';
 import { timeAgo } from '../utils/relativeTime';
 import { useSocket } from '../hooks/useSocket';
 import { useAuth } from '../context/AuthContext';
@@ -51,6 +51,15 @@ interface AuditLog {
     action: string;
     metadata: Record<string, any>;
     created_at: string;
+}
+
+interface BudgetStatus {
+    monthlyLimit: number;
+    spent: number;
+    remaining: number;
+    percentUsed: number;
+    exceeded: boolean;
+    monthYear: string;
 }
 
 type TabType = 'expenses' | 'balances' | 'settlements' | 'activity';
@@ -117,6 +126,9 @@ export default function GroupDetail() {
     const [activeTab, setActiveTab] = useState<TabType>('expenses');
     const [loading, setLoading] = useState(true);
     const [activityLoading, setActivityLoading] = useState(false);
+    const [budget, setBudget] = useState<BudgetStatus | null>(null);
+    const [showBudgetModal, setShowBudgetModal] = useState(false);
+    const [budgetInput, setBudgetInput] = useState('');
 
     const isAdmin = members.find(m => m.user_id === user?.id)?.role === 'admin';
 
@@ -154,9 +166,22 @@ export default function GroupDetail() {
         }
     }, [groupId]);
 
+    const fetchBudget = useCallback(async () => {
+        if (!groupId) return;
+        try {
+            const res = await api.get(`/groups/${groupId}/budget`);
+            setBudget(res.data.data.budget);
+        } catch {
+            // No budget set
+        }
+    }, [groupId]);
+
     useEffect(() => {
-        if (groupId) fetchGroupData();
-    }, [groupId, fetchGroupData]);
+        if (groupId) {
+            fetchGroupData();
+            fetchBudget();
+        }
+    }, [groupId, fetchGroupData, fetchBudget]);
 
     useEffect(() => {
         if (activeTab === 'activity' && auditLogs.length === 0) {
@@ -246,6 +271,29 @@ export default function GroupDetail() {
                     </span>
                 ))}
             </div>
+
+            {/* Budget Bar */}
+            {budget && (
+                <div className={`budget-bar ${budget.percentUsed > 80 ? (budget.exceeded ? 'exceeded' : 'warning') : ''}`}>
+                    <div className="budget-bar-info">
+                        <span>{formatCurrency(budget.remaining)} remaining this month</span>
+                        <span className="budget-bar-percent">{budget.percentUsed.toFixed(0)}% of {formatCurrency(budget.monthlyLimit)}</span>
+                    </div>
+                    <div className="budget-bar-track">
+                        <div className="budget-bar-fill" style={{ width: `${Math.min(budget.percentUsed, 100)}%` }} />
+                    </div>
+                </div>
+            )}
+            {!budget && isAdmin && (
+                <button className="btn btn-outline btn-sm" style={{ marginBottom: 16 }} onClick={() => setShowBudgetModal(true)}>
+                    Set Monthly Budget
+                </button>
+            )}
+            {budget && isAdmin && (
+                <button className="btn btn-outline btn-sm" style={{ marginBottom: 16, marginLeft: 8 }} onClick={() => { setBudgetInput(String(budget.monthlyLimit)); setShowBudgetModal(true); }}>
+                    Edit Budget
+                </button>
+            )}
 
             <div className="tabs">
                 {(['expenses', 'balances', 'settlements'] as TabType[]).map(tab => (
@@ -389,6 +437,46 @@ export default function GroupDetail() {
                             <div className="modal-actions">
                                 <button type="button" className="btn btn-outline" onClick={() => setShowInvite(false)}>Cancel</button>
                                 <button type="submit" className="btn btn-primary">Invite</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Budget Modal */}
+            {showBudgetModal && (
+                <div className="modal-overlay" onClick={() => setShowBudgetModal(false)}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <h2>{budget ? 'Edit Monthly Budget' : 'Set Monthly Budget'}</h2>
+                        <form onSubmit={async (e: FormEvent) => {
+                            e.preventDefault();
+                            const limit = parseFloat(budgetInput);
+                            if (!limit || limit <= 0) { toast.error('Enter a valid amount'); return; }
+                            try {
+                                await api.post(`/groups/${groupId}/budget`, { monthlyLimit: limit });
+                                toast.success('Budget saved');
+                                setShowBudgetModal(false);
+                                fetchBudget();
+                            } catch (err: any) {
+                                toast.error(err.response?.data?.error || 'Failed to save budget');
+                            }
+                        }}>
+                            <div className="form-group">
+                                <label htmlFor="budgetLimit">Monthly Limit (₹)</label>
+                                <input
+                                    id="budgetLimit"
+                                    type="number"
+                                    step="100"
+                                    min="1"
+                                    value={budgetInput}
+                                    onChange={(e) => setBudgetInput(e.target.value)}
+                                    placeholder="e.g., 5000"
+                                    required
+                                />
+                            </div>
+                            <div className="modal-actions">
+                                <button type="button" className="btn btn-outline" onClick={() => setShowBudgetModal(false)}>Cancel</button>
+                                <button type="submit" className="btn btn-primary">Save</button>
                             </div>
                         </form>
                     </div>

@@ -25,6 +25,23 @@ export class ExpensesService {
             splits,
         });
 
+        // Check budget and return warning if exceeded
+        let budgetWarning: { exceeded: boolean; percentUsed: number; remaining: number } | undefined;
+        try {
+            const { BudgetService } = await import('../budget/budget.service');
+            const budgetService = new BudgetService();
+            const budget = await budgetService.getBudget(groupId);
+            if (budget) {
+                budgetWarning = {
+                    exceeded: budget.exceeded,
+                    percentUsed: budget.percentUsed,
+                    remaining: budget.remaining,
+                };
+            }
+        } catch {
+            // Budget module not yet set up — silently skip
+        }
+
         auditService.log({
             actorUserId: userId,
             entityType: 'expense',
@@ -35,7 +52,7 @@ export class ExpensesService {
 
         emitToGroup(groupId, 'expense:created', { groupId, expense: result.expense });
 
-        return result;
+        return { ...result, budgetWarning };
     }
 
     async getExpenses(groupId: string, page: number = 1, limit: number = 20) {
@@ -53,14 +70,13 @@ export class ExpensesService {
     }
 
     async adjustExpense(groupId: string, userId: string, expenseId: string, input: AdjustExpenseInput) {
-        // Verify original expense exists
         const original = await this.repo.findById(expenseId);
         if (!original) throw AppError.notFound('Original expense not found');
         if (original.group_id !== groupId) throw AppError.forbidden('Expense does not belong to this group');
 
         const splits = this.calculateSplits(input);
 
-        // Create a reversal of the original expense
+        // Reversal of original
         const reversal = await this.repo.create({
             groupId,
             paidBy: original.paid_by,
@@ -71,11 +87,11 @@ export class ExpensesService {
             parentId: expenseId,
             splits: (await this.repo.getSplits(expenseId)).map((s) => ({
                 userId: s.user_id,
-                amount: -s.amount, // negative to reverse
+                amount: -s.amount,
             })),
         });
 
-        // Create new corrected expense
+        // New corrected expense
         const corrected = await this.repo.create({
             groupId,
             paidBy: input.paidBy,
@@ -122,53 +138,94 @@ export class ExpensesService {
 
     /**
      * Calculate split amounts based on split type.
-     * Handles rounding for equal splits by assigning remainder to first splitter.
+     * 
+     * Rounding strategy (Splitwise standard):
+     * - Equal: payer absorbs the rounding remainder
+     * - Percentage: computed per-person, payer absorbs rounding drift
+     * - Custom: validated to sum to total (with 1 paisa tolerance)
      */
     private calculateSplits(input: CreateExpenseInput | AdjustExpenseInput): { userId: string; amount: number }[] {
-        const { amount, splitType, splits } = input;
+        const { amount, splitType, splits, paidBy } = input;
+
+        if (splits.length === 0) {
+            throw AppError.badRequest('At least one split participant is required');
+        }
+
+        let result: { userId: string; amount: number }[];
 
         switch (splitType) {
             case 'equal': {
                 const perPerson = Math.floor((amount * 100) / splits.length) / 100;
-                const remainder = Math.round((amount - perPerson * splits.length) * 100) / 100;
+                const totalDistributed = perPerson * splits.length;
+                const remainder = Math.round((amount - totalDistributed) * 100) / 100;
 
-                return splits.map((s, i) => ({
+                result = splits.map((s) => ({
                     userId: s.userId,
-                    amount: i === 0 ? perPerson + remainder : perPerson,
+                    amount: perPerson,
                 }));
+
+                // Payer absorbs the rounding remainder (Splitwise standard)
+                if (remainder !== 0) {
+                    const payerIdx = result.findIndex(r => r.userId === paidBy);
+                    const targetIdx = payerIdx >= 0 ? payerIdx : 0;
+                    result[targetIdx].amount = Math.round((result[targetIdx].amount + remainder) * 100) / 100;
+                }
+                break;
             }
 
             case 'custom': {
                 const totalSplit = splits.reduce((sum, s) => sum + (s.amount || 0), 0);
-                const tolerance = 0.01;
-                if (Math.abs(totalSplit - amount) > tolerance) {
+                if (Math.abs(totalSplit - amount) > 0.01) {
                     throw AppError.badRequest(
-                        `Custom split amounts (${totalSplit}) must equal the total amount (${amount})`
+                        `Custom split amounts (${totalSplit.toFixed(2)}) must equal the total amount (${amount.toFixed(2)})`
                     );
                 }
 
-                return splits.map((s) => ({
-                    userId: s.userId,
-                    amount: s.amount || 0,
-                }));
+                result = splits.map((s) => {
+                    const splitAmt = s.amount || 0;
+                    if (splitAmt < 0) throw AppError.badRequest('Split amounts cannot be negative');
+                    return { userId: s.userId, amount: splitAmt };
+                });
+                break;
             }
 
             case 'percentage': {
                 const totalPercentage = splits.reduce((sum, s) => sum + (s.percentage || 0), 0);
                 if (Math.abs(totalPercentage - 100) > 0.01) {
                     throw AppError.badRequest(
-                        `Percentages must sum to 100 (got ${totalPercentage})`
+                        `Percentages must sum to 100 (got ${totalPercentage.toFixed(2)})`
                     );
                 }
 
-                return splits.map((s) => ({
+                // Correct formula: amount * (percentage / 100), rounded to 2 decimals
+                result = splits.map((s) => ({
                     userId: s.userId,
-                    amount: Math.round(amount * (s.percentage || 0)) / 100,
+                    amount: Math.round(amount * (s.percentage || 0) / 100 * 100) / 100,
                 }));
+
+                // Payer absorbs rounding drift
+                const sumComputed = result.reduce((s, r) => s + r.amount, 0);
+                const drift = Math.round((amount - sumComputed) * 100) / 100;
+                if (drift !== 0) {
+                    const payerIdx = result.findIndex(r => r.userId === paidBy);
+                    const targetIdx = payerIdx >= 0 ? payerIdx : 0;
+                    result[targetIdx].amount = Math.round((result[targetIdx].amount + drift) * 100) / 100;
+                }
+                break;
             }
 
             default:
                 throw AppError.badRequest('Invalid split type');
         }
+
+        // Final safety: verify total matches (belt-and-suspenders)
+        const finalTotal = result.reduce((sum, r) => sum + r.amount, 0);
+        if (Math.abs(Math.round(finalTotal * 100) / 100 - amount) > 0.01) {
+            throw AppError.badRequest(
+                `Split calculation error: splits total ${finalTotal.toFixed(2)} ≠ expense amount ${amount.toFixed(2)}`
+            );
+        }
+
+        return result;
     }
 }

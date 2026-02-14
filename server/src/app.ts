@@ -13,6 +13,7 @@ import settlementsRoutes from './modules/settlements/settlements.routes';
 import dashboardRoutes from './modules/dashboard/dashboard.routes';
 import notificationsRoutes from './modules/notifications/notifications.routes';
 import auditRoutes from './modules/audit/audit.routes';
+import budgetRoutes from './modules/budget/budget.routes';
 
 const app = express();
 
@@ -39,6 +40,7 @@ app.use('/api/v1/groups/:groupId/settlements', settlementsRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/notifications', notificationsRoutes);
 app.use('/api/v1/audit-logs', auditRoutes);
+app.use('/api/v1/groups/:groupId/budget', budgetRoutes);
 
 // ─── 404 Handler ─────────────────────────────────────────────────────
 app.use((_req, res) => {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import api from '../api/client';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -11,6 +11,13 @@ export default function Settlements() {
     const [searchParams] = useSearchParams();
     const [settlements, setSettlements] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [creating, setCreating] = useState(false);
+    const [created, setCreated] = useState(false);
+    const [upiLink, setUpiLink] = useState<string | null>(null);
+    const [noUpiReason, setNoUpiReason] = useState<string | null>(null);
+
+    // Generate idempotency key ONCE per page load — prevents duplicate settlements
+    const idempotencyKey = useRef(uuidv4());
 
     const toUserId = searchParams.get('to');
     const toName = searchParams.get('toName');
@@ -32,23 +39,45 @@ export default function Settlements() {
     };
 
     const createSettlement = async () => {
-        if (!toUserId || !suggestedAmount) return;
+        if (!toUserId || !suggestedAmount || creating || created) return;
+        setCreating(true);
         try {
             const res = await api.post(`/groups/${groupId}/settlements`, {
                 payeeId: toUserId,
                 amount: parseFloat(suggestedAmount),
-                idempotencyKey: uuidv4(),
+                idempotencyKey: idempotencyKey.current,
             });
-            const { upiLink } = res.data.data;
+            const data = res.data.data;
             toast.success('Settlement created');
+            setCreated(true);
 
-            if (upiLink) {
-                window.open(upiLink, '_blank');
+            if (data.upiLink) {
+                setUpiLink(data.upiLink);
+                window.location.href = data.upiLink;
+            } else if (data.noUpiReason) {
+                setNoUpiReason(data.noUpiReason);
             }
 
             fetchSettlements();
         } catch (err: any) {
             toast.error(err.response?.data?.error || 'Failed to create settlement');
+        } finally {
+            setCreating(false);
+        }
+    };
+
+    const copyUpiDetails = () => {
+        if (!upiLink) return;
+        navigator.clipboard.writeText(upiLink).then(() => {
+            toast.success('UPI link copied to clipboard');
+        }).catch(() => {
+            window.prompt('Copy this UPI link:', upiLink);
+        });
+    };
+
+    const openUpiLink = () => {
+        if (upiLink) {
+            window.location.href = upiLink;
         }
     };
 
@@ -82,12 +111,49 @@ export default function Settlements() {
 
             {toUserId && suggestedAmount && (
                 <div className="settle-prompt">
-                    <p>
-                        Settle <strong>{formatCurrency(parseFloat(suggestedAmount))}</strong> with <strong>{toName}</strong>?
-                    </p>
-                    <button className="btn btn-success" onClick={createSettlement}>
-                        Create Settlement & Open UPI
-                    </button>
+                    {!created ? (
+                        <>
+                            <p>
+                                Settle <strong>{formatCurrency(parseFloat(suggestedAmount))}</strong> with <strong>{toName}</strong>?
+                            </p>
+                            <div className="settle-actions">
+                                <button
+                                    className="btn btn-success btn-lg"
+                                    onClick={createSettlement}
+                                    disabled={creating}
+                                >
+                                    {creating ? 'Creating…' : 'Create Settlement & Pay via UPI'}
+                                </button>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <p className="settle-success">✅ Settlement created for <strong>{formatCurrency(parseFloat(suggestedAmount))}</strong> with <strong>{toName}</strong></p>
+
+                            {/* UPI actions after creation */}
+                            {upiLink && (
+                                <div className="upi-fallback">
+                                    <p className="upi-fallback-text">Didn't open your UPI app?</p>
+                                    <div className="upi-fallback-actions">
+                                        <button className="btn btn-success btn-sm" onClick={openUpiLink}>
+                                            Open UPI App
+                                        </button>
+                                        <button className="btn btn-outline btn-sm" onClick={copyUpiDetails}>
+                                            Copy UPI Link
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* No UPI notice */}
+                            {noUpiReason && (
+                                <div className="upi-notice">
+                                    <span className="upi-notice-icon">ℹ️</span>
+                                    <span>{noUpiReason}</span>
+                                </div>
+                            )}
+                        </>
+                    )}
                 </div>
             )}
 

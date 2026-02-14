@@ -105,6 +105,14 @@ export class SettlementsRepository {
         });
     }
 
+    async deletePending(settlementId: string): Promise<boolean> {
+        const result = await queryOne<{ id: string }>(
+            `DELETE FROM settlements WHERE id = $1 AND status = 'pending' RETURNING id`,
+            [settlementId]
+        );
+        return !!result;
+    }
+
     async getHistory(groupId: string): Promise<SettlementHistoryEntry[]> {
         return query(
             `SELECT sh.*

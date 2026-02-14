@@ -1,7 +1,7 @@
 import { AppError } from '../../utils/AppError';
 import { SettlementsRepository } from './settlements.repository';
 import { CreateSettlementInput, UpdateSettlementInput } from './settlements.schema';
-import { generateUPILink } from '../../utils/upiLinkGenerator';
+import { generateUPILink, isValidUpiVpa } from '../../utils/upiLinkGenerator';
 import { queryOne } from '../../config/database';
 import { auditService } from '../audit/audit.service';
 import { emitToGroup } from '../../config/socket';
@@ -22,7 +22,7 @@ export class SettlementsService {
         // Idempotency check
         const existing = await this.repo.findByIdempotencyKey(input.idempotencyKey);
         if (existing) {
-            return existing; // Return existing settlement instead of creating duplicate
+            return { settlement: existing, upiLink: existing.upi_link, noUpiReason: null };
         }
 
         // Get payee info for UPI link
@@ -35,15 +35,25 @@ export class SettlementsService {
             throw AppError.notFound('Payee not found');
         }
 
-        // Generate UPI link if payee has UPI ID
-        let upiLink: string | undefined;
-        if (payee.upi_id) {
-            upiLink = generateUPILink({
-                payeeVPA: payee.upi_id,
-                payeeName: payee.name,
-                amount: input.amount,
-                transactionNote: `SplitKaro Settlement`,
-            });
+        // Generate UPI link with proper validation
+        let upiLink: string | null = null;
+        let noUpiReason: string | null = null;
+
+        if (!payee.upi_id) {
+            noUpiReason = 'Payee has no UPI ID configured. Ask them to add their UPI ID in Profile.';
+        } else if (!isValidUpiVpa(payee.upi_id)) {
+            noUpiReason = `Payee's UPI ID "${payee.upi_id}" is invalid. Ask them to update it in Profile.`;
+        } else {
+            try {
+                upiLink = generateUPILink({
+                    payeeVPA: payee.upi_id,
+                    payeeName: payee.name,
+                    amount: input.amount,
+                    transactionNote: `SplitKaro Settlement`,
+                });
+            } catch (err: any) {
+                noUpiReason = err.message || 'Failed to generate UPI link';
+            }
         }
 
         const settlement = await this.repo.create({
@@ -52,7 +62,7 @@ export class SettlementsService {
             payeeId: input.payeeId,
             amount: input.amount,
             idempotencyKey: input.idempotencyKey,
-            upiLink,
+            upiLink: upiLink || undefined,
         });
 
         auditService.log({
@@ -65,14 +75,13 @@ export class SettlementsService {
 
         emitToGroup(groupId, 'settlement:created', { groupId, settlementId: settlement.id });
 
-        return { settlement, upiLink };
+        return { settlement, upiLink, noUpiReason };
     }
 
     async recordPayment(settlementId: string, userId: string, input: UpdateSettlementInput) {
         const settlement = await this.repo.findById(settlementId);
         if (!settlement) throw AppError.notFound('Settlement not found');
 
-        // Only payer or payee can record payment
         if (settlement.payer_id !== userId && settlement.payee_id !== userId) {
             throw AppError.forbidden('Only the payer or payee can record payments');
         }
@@ -112,6 +121,20 @@ export class SettlementsService {
         });
 
         return updated;
+    }
+
+    async deleteSettlement(settlementId: string, userId: string) {
+        const settlement = await this.repo.findById(settlementId);
+        if (!settlement) throw AppError.notFound('Settlement not found');
+        if (settlement.payer_id !== userId) {
+            throw AppError.forbidden('Only the payer can delete a settlement');
+        }
+        if (settlement.status !== 'pending') {
+            throw AppError.badRequest('Can only delete pending settlements');
+        }
+        const deleted = await this.repo.deletePending(settlementId);
+        if (!deleted) throw AppError.badRequest('Could not delete settlement');
+        return { deleted: true };
     }
 
     async getSettlements(groupId: string, status?: string) {

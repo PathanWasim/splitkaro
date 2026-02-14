@@ -1120,3 +1120,209 @@ a:hover {
     padding: var(--space-6) var(--space-5);
   }
 }
+
+/* ─── Budget Bar ──────────────────────────────────────────── */
+.budget-bar {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.budget-bar-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.budget-bar-percent {
+  color: var(--text-muted);
+}
+
+.budget-bar-track {
+  height: 6px;
+  background: var(--bg-input);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.budget-bar-fill {
+  height: 100%;
+  background: var(--green);
+  border-radius: var(--radius-pill);
+  transition: width 0.4s ease;
+}
+
+.budget-bar.warning .budget-bar-fill {
+  background: var(--amber);
+}
+
+.budget-bar.warning .budget-bar-info span:first-child {
+  color: var(--amber);
+}
+
+.budget-bar.exceeded .budget-bar-fill {
+  background: var(--red);
+}
+
+.budget-bar.exceeded .budget-bar-info span:first-child {
+  color: var(--red);
+  font-weight: 600;
+}
+
+/* ─── Split Preview ──────────────────────────────────────── */
+.split-preview {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  margin-top: var(--space-3);
+}
+
+.split-preview-title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-2);
+}
+
+.split-preview-row {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-1) 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.split-preview-amount {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ─── Split Info & Helper Text ───────────────────────────── */
+.split-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: var(--space-3);
+}
+
+.split-helper-text {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.split-error {
+  color: var(--red);
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
+  background: var(--red-dim);
+  border-radius: var(--radius-sm);
+  margin-top: var(--space-2);
+}
+
+/* ─── Member Checkboxes ──────────────────────────────────── */
+.member-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  accent-color: var(--blue);
+}
+
+.split-input {
+  margin-left: auto;
+  width: 80px;
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  text-align: right;
+}
+
+/* ─── UPI Fallback & Notice ──────────────────────────────── */
+.settle-actions {
+  margin-top: var(--space-3);
+}
+
+.upi-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--amber-dim);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--amber);
+}
+
+.upi-notice-icon {
+  font-size: 1.1em;
+  flex-shrink: 0;
+}
+
+.upi-fallback {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.upi-fallback-text {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+}
+
+.upi-fallback-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* ─── Button Large Variant ───────────────────────────────── */
+.btn-lg {
+  padding: var(--space-3) var(--space-6);
+  font-size: var(--text-base);
+}
+
+/* ─── Settlement Success ─────────────────────────────────── */
+.settle-success {
+  color: var(--green);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-3);
+}
+
+.checkbox-name {
+  flex: 1;
+}
