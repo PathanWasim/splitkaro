@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/client';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -39,7 +39,7 @@ export default function Dashboard() {
             ]);
             setGroups(groupsRes.data.data.groups);
             setSummary(summaryRes.data.data);
-        } catch (err) {
+        } catch {
             toast.error('Failed to load dashboard');
         } finally {
             setLoading(false);
@@ -50,7 +50,7 @@ export default function Dashboard() {
         e.preventDefault();
         try {
             await api.post('/groups', { name: newGroupName, type: newGroupType });
-            toast.success('Group created!');
+            toast.success('Group created');
             setShowCreateModal(false);
             setNewGroupName('');
             fetchData();
@@ -59,7 +59,27 @@ export default function Dashboard() {
         }
     };
 
-    if (loading) return <div className="loading">Loading dashboard...</div>;
+    if (loading) {
+        return (
+            <div className="dashboard">
+                <div className="dashboard-header">
+                    <div className="skeleton skeleton-text w-40" style={{ height: 28 }} />
+                    <div className="skeleton" style={{ width: 120, height: 36, borderRadius: 6 }} />
+                </div>
+                <div className="summary-cards">
+                    {[1, 2, 3, 4].map(i => (
+                        <div key={i} className="skeleton skeleton-card" />
+                    ))}
+                </div>
+                <div className="skeleton skeleton-text w-40" style={{ height: 14, marginBottom: 16 }} />
+                <div className="groups-grid">
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="skeleton skeleton-card" />
+                    ))}
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="dashboard">
@@ -73,36 +93,39 @@ export default function Dashboard() {
             {summary && (
                 <div className="summary-cards">
                     <div className="summary-card green">
+                        <span className="summary-card-icon">↗</span>
                         <h3>Owed to You</h3>
                         <p className="amount">{formatCurrency(summary.totalOwedToYou)}</p>
                     </div>
                     <div className="summary-card red">
+                        <span className="summary-card-icon">↙</span>
                         <h3>You Owe</h3>
                         <p className="amount">{formatCurrency(summary.totalYouOwe)}</p>
                     </div>
                     <div className={`summary-card ${summary.netBalance >= 0 ? 'green' : 'red'}`}>
+                        <span className="summary-card-icon">≈</span>
                         <h3>Net Balance</h3>
                         <p className="amount">{formatCurrency(summary.netBalance)}</p>
                     </div>
                     <div className="summary-card blue">
+                        <span className="summary-card-icon">⊞</span>
                         <h3>Active Groups</h3>
                         <p className="amount">{summary.activeGroups}</p>
                     </div>
                 </div>
             )}
 
-            <h2>Your Groups</h2>
+            <p className="section-label">Your Groups</p>
             {groups.length === 0 ? (
                 <div className="empty-state">
-                    <p>No groups yet. Create one to get started!</p>
+                    <span className="empty-state-icon">📂</span>
+                    <p>No groups yet. Create one to start splitting expenses with friends.</p>
                 </div>
             ) : (
                 <div className="groups-grid">
                     {groups.map((group) => (
                         <Link to={`/groups/${group.id}`} key={group.id} className="group-card">
-                            <div className="group-card-header">
-                                <span className="group-type-badge">{group.type}</span>
-                            </div>
+                            <span className="group-type-badge">{group.type}</span>
                             <h3>{group.name}</h3>
                             <p className="group-meta">{group.member_count} members</p>
                         </Link>

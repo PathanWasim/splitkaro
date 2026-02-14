@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -17,7 +17,7 @@ export default function Register() {
         setLoading(true);
         try {
             await register(email, password, name, upiId || undefined);
-            toast.success('Account created successfully!');
+            toast.success('Account created');
             navigate('/');
         } catch (err: any) {
             toast.error(err.response?.data?.error || 'Registration failed');
@@ -30,7 +30,7 @@ export default function Register() {
         <div className="auth-container">
             <div className="auth-card">
                 <div className="auth-header">
-                    <h1>💰 SplitKaro</h1>
+                    <h1>SplitKaro</h1>
                     <p>Create your account</p>
                 </div>
                 <form onSubmit={handleSubmit}>
@@ -40,7 +40,7 @@ export default function Register() {
                             id="name"
                             type="text"
                             value={name}
-                            onChange={(e) => setName(e.target.value)}
+                            onChange={e => setName(e.target.value)}
                             placeholder="John Doe"
                             required
                         />
@@ -51,7 +51,7 @@ export default function Register() {
                             id="email"
                             type="email"
                             value={email}
-                            onChange={(e) => setEmail(e.target.value)}
+                            onChange={e => setEmail(e.target.value)}
                             placeholder="you@example.com"
                             required
                         />
@@ -62,7 +62,7 @@ export default function Register() {
                             id="password"
                             type="password"
                             value={password}
-                            onChange={(e) => setPassword(e.target.value)}
+                            onChange={e => setPassword(e.target.value)}
                             placeholder="Min. 8 characters"
                             required
                             minLength={8}
@@ -74,12 +74,12 @@ export default function Register() {
                             id="upiId"
                             type="text"
                             value={upiId}
-                            onChange={(e) => setUpiId(e.target.value)}
+                            onChange={e => setUpiId(e.target.value)}
                             placeholder="yourname@upi"
                         />
                     </div>
                     <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
-                        {loading ? 'Creating account...' : 'Create Account'}
+                        {loading ? 'Creating account…' : 'Create Account'}
                     </button>
                 </form>
                 <p className="auth-footer">

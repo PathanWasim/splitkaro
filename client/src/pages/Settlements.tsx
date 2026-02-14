@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import api from '../api/client';
 import { formatCurrency } from '../utils/formatCurrency';
+import { timeAgo } from '../utils/relativeTime';
 import { v4 as uuidv4 } from 'uuid';
 import toast from 'react-hot-toast';
 
@@ -11,7 +12,6 @@ export default function Settlements() {
     const [settlements, setSettlements] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
-    // Pre-fill from URL params (from "Settle" button in GroupDetail)
     const toUserId = searchParams.get('to');
     const toName = searchParams.get('toName');
     const suggestedAmount = searchParams.get('amount');
@@ -40,7 +40,7 @@ export default function Settlements() {
                 idempotencyKey: uuidv4(),
             });
             const { upiLink } = res.data.data;
-            toast.success('Settlement created!');
+            toast.success('Settlement created');
 
             if (upiLink) {
                 window.open(upiLink, '_blank');
@@ -58,54 +58,67 @@ export default function Settlements() {
                 amount,
                 note: 'Payment recorded',
             });
-            toast.success('Payment recorded!');
+            toast.success('Payment recorded');
             fetchSettlements();
         } catch (err: any) {
             toast.error(err.response?.data?.error || 'Failed to record payment');
         }
     };
 
-    if (loading) return <div className="loading">Loading settlements...</div>;
+    if (loading) {
+        return (
+            <div className="settlements-page">
+                <div className="skeleton skeleton-text w-40" style={{ height: 14, marginBottom: 8 }} />
+                <div className="skeleton skeleton-text w-60" style={{ height: 28, marginBottom: 32 }} />
+                {[1, 2, 3].map(i => <div key={i} className="skeleton skeleton-row" style={{ height: 80, marginBottom: 12 }} />)}
+            </div>
+        );
+    }
 
     return (
         <div className="settlements-page">
             <Link to={`/groups/${groupId}`} className="back-link">← Back to Group</Link>
             <h1>Settlements</h1>
 
-            {/* Quick settle from URL params */}
             {toUserId && suggestedAmount && (
                 <div className="settle-prompt">
                     <p>
                         Settle <strong>{formatCurrency(parseFloat(suggestedAmount))}</strong> with <strong>{toName}</strong>?
                     </p>
-                    <button className="btn btn-primary" onClick={createSettlement}>
+                    <button className="btn btn-success" onClick={createSettlement}>
                         Create Settlement & Open UPI
                     </button>
                 </div>
             )}
 
-            {/* Existing Settlements */}
             <h2>Settlement History</h2>
             {settlements.length === 0 ? (
-                <div className="empty-state"><p>No settlements yet</p></div>
+                <div className="empty-state">
+                    <span className="empty-state-icon">🤝</span>
+                    <p>No settlements yet. Use the "Settle" button from the group page to begin.</p>
+                </div>
             ) : (
                 <div className="settlements-history">
                     {settlements.map((s) => (
-                        <div key={s.id} className={`settlement-card status-${s.status}`}>
+                        <div key={s.id} className="settlement-card">
                             <div className="settlement-detail">
                                 <p><strong>{s.payer_name}</strong> → <strong>{s.payee_name}</strong></p>
                                 <p className="settlement-amounts">
-                                    {formatCurrency(s.settled_amount)} / {formatCurrency(s.amount)}
+                                    {formatCurrency(s.settled_amount)} of {formatCurrency(s.amount)} · {timeAgo(s.created_at)}
                                 </p>
                             </div>
                             <div className="settlement-status">
                                 <span className={`status-badge ${s.status}`}>{s.status}</span>
-                                {s.status !== 'settled' && (
+                                {s.status !== 'settled' ? (
                                     <button
-                                        className="btn btn-sm btn-outline"
+                                        className="btn btn-sm btn-primary"
                                         onClick={() => recordPayment(s.id, s.amount - s.settled_amount)}
                                     >
                                         Mark Paid
+                                    </button>
+                                ) : (
+                                    <button className="btn btn-sm btn-outline" disabled>
+                                        Settled
                                     </button>
                                 )}
                             </div>

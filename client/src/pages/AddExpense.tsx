@@ -1,5 +1,5 @@
-import { useState, useEffect, FormEvent } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, type FormEvent } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../api/client';
 import toast from 'react-hot-toast';
 
@@ -54,7 +54,7 @@ export default function AddExpense() {
                 splits,
             });
 
-            toast.success('Expense added!');
+            toast.success('Expense added');
             navigate(`/groups/${groupId}`);
         } catch (err: any) {
             toast.error(err.response?.data?.error || 'Failed to add expense');
@@ -71,6 +71,7 @@ export default function AddExpense() {
 
     return (
         <div className="add-expense">
+            <Link to={`/groups/${groupId}`} className="back-link" style={{ marginBottom: 8, display: 'inline-block' }}>← Back to Group</Link>
             <h1>Add Expense</h1>
             <form onSubmit={handleSubmit} className="expense-form">
                 <div className="form-group">
@@ -146,7 +147,7 @@ export default function AddExpense() {
                 <div className="form-actions">
                     <button type="button" className="btn btn-outline" onClick={() => navigate(-1)}>Cancel</button>
                     <button type="submit" className="btn btn-primary" disabled={loading}>
-                        {loading ? 'Adding...' : 'Add Expense'}
+                        {loading ? 'Adding…' : 'Add Expense'}
                     </button>
                 </div>
             </form>

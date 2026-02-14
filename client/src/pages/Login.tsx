@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -15,7 +15,7 @@ export default function Login() {
         setLoading(true);
         try {
             await login(email, password);
-            toast.success('Welcome back!');
+            toast.success('Welcome back');
             navigate('/');
         } catch (err: any) {
             toast.error(err.response?.data?.error || 'Login failed');
@@ -28,8 +28,8 @@ export default function Login() {
         <div className="auth-container">
             <div className="auth-card">
                 <div className="auth-header">
-                    <h1>💰 SplitKaro</h1>
-                    <p>Sign in to manage your group expenses</p>
+                    <h1>SplitKaro</h1>
+                    <p>Sign in to manage your expenses</p>
                 </div>
                 <form onSubmit={handleSubmit}>
                     <div className="form-group">
@@ -38,7 +38,7 @@ export default function Login() {
                             id="email"
                             type="email"
                             value={email}
-                            onChange={(e) => setEmail(e.target.value)}
+                            onChange={e => setEmail(e.target.value)}
                             placeholder="you@example.com"
                             required
                         />
@@ -49,14 +49,14 @@ export default function Login() {
                             id="password"
                             type="password"
                             value={password}
-                            onChange={(e) => setPassword(e.target.value)}
+                            onChange={e => setPassword(e.target.value)}
                             placeholder="••••••••"
                             required
                             minLength={8}
                         />
                     </div>
                     <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
-                        {loading ? 'Signing in...' : 'Sign In'}
+                        {loading ? 'Signing in…' : 'Sign In'}
                     </button>
                 </form>
                 <p className="auth-footer">

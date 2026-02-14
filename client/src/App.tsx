@@ -13,14 +13,14 @@ import { ReactNode } from 'react';
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="loading">Loading...</div>;
+  if (loading) return <div className="loading">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
 function PublicRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="loading">Loading...</div>;
+  if (loading) return <div className="loading">Loading…</div>;
   if (user) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
@@ -33,7 +33,16 @@ function App() {
           position="top-right"
           toastOptions={{
             duration: 3000,
-            style: { background: '#1e1e2e', color: '#cdd6f4', border: '1px solid #313244' },
+            style: {
+              background: '#1c1e28',
+              color: '#e4e6ef',
+              border: '1px solid #2a2d3a',
+              fontSize: '0.875rem',
+              borderRadius: '6px',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+            },
+            success: { iconTheme: { primary: '#34d399', secondary: '#1c1e28' } },
+            error: { iconTheme: { primary: '#f87171', secondary: '#1c1e28' } },
           }}
         />
         <Routes>

@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback, FormEvent } from 'react';
+import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api/client';
 import { formatCurrency, formatDate } from '../utils/formatCurrency';
+import { timeAgo } from '../utils/relativeTime';
 import { useSocket } from '../hooks/useSocket';
+import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
-interface GroupDetail {
+interface GroupInfo {
     id: string;
     name: string;
     type: string;
@@ -42,17 +44,81 @@ interface SettlementSuggestion {
     amount: number;
 }
 
+interface AuditLog {
+    id: string;
+    actor_user_id: string;
+    entity_type: string;
+    action: string;
+    metadata: Record<string, any>;
+    created_at: string;
+}
+
+type TabType = 'expenses' | 'balances' | 'settlements' | 'activity';
+
+function describeAuditAction(log: AuditLog): { text: string; actionClass: string } {
+    const m = log.metadata || {};
+    const actor = m.actor_name || m.userName || 'Someone';
+
+    switch (log.action) {
+        case 'expense.created':
+            return {
+                text: `${actor} added an expense "${m.description || ''}" for ${formatCurrency(m.amount || 0)}`,
+                actionClass: 'action-created',
+            };
+        case 'expense.adjusted':
+            return {
+                text: `${actor} adjusted an expense to ${formatCurrency(m.newAmount || 0)}`,
+                actionClass: 'action-adjusted',
+            };
+        case 'settlement.created':
+            return {
+                text: `${actor} initiated a settlement of ${formatCurrency(m.amount || 0)}`,
+                actionClass: 'action-created',
+            };
+        case 'settlement.paid':
+            return {
+                text: `${actor} recorded a payment of ${formatCurrency(m.paidAmount || 0)}`,
+                actionClass: 'action-settled',
+            };
+        case 'group.member_invited':
+            return {
+                text: `${actor} invited ${m.invitedEmail || 'a member'}`,
+                actionClass: 'action-invited',
+            };
+        case 'group.member_removed':
+            return {
+                text: `${actor} removed a member from the group`,
+                actionClass: 'action-removed',
+            };
+        case 'group.created':
+            return {
+                text: `${actor} created this group`,
+                actionClass: 'action-created',
+            };
+        default:
+            return {
+                text: `${actor} performed ${log.action.replace(/\./g, ' ')}`,
+                actionClass: '',
+            };
+    }
+}
+
 export default function GroupDetail() {
     const { groupId } = useParams();
-    const [group, setGroup] = useState<GroupDetail | null>(null);
+    const { user } = useAuth();
+    const [group, setGroup] = useState<GroupInfo | null>(null);
     const [members, setMembers] = useState<Member[]>([]);
     const [expenses, setExpenses] = useState<Expense[]>([]);
     const [balances, setBalances] = useState<Balance[]>([]);
     const [settlements, setSettlements] = useState<SettlementSuggestion[]>([]);
+    const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
     const [inviteEmail, setInviteEmail] = useState('');
     const [showInvite, setShowInvite] = useState(false);
-    const [activeTab, setActiveTab] = useState<'expenses' | 'balances' | 'settlements'>('expenses');
+    const [activeTab, setActiveTab] = useState<TabType>('expenses');
     const [loading, setLoading] = useState(true);
+    const [activityLoading, setActivityLoading] = useState(false);
+
+    const isAdmin = members.find(m => m.user_id === user?.id)?.role === 'admin';
 
     const fetchGroupData = useCallback(async () => {
         try {
@@ -67,10 +133,24 @@ export default function GroupDetail() {
             setExpenses(expensesRes.data.data.expenses);
             setBalances(balancesRes.data.data.balances);
             setSettlements(settlementsRes.data.data.settlements);
-        } catch (err) {
+        } catch {
             toast.error('Failed to load group');
         } finally {
             setLoading(false);
+        }
+    }, [groupId]);
+
+    const fetchActivity = useCallback(async () => {
+        if (!groupId) return;
+        setActivityLoading(true);
+        try {
+            const res = await api.get(`/audit-logs?groupId=${groupId}`);
+            setAuditLogs(res.data.data.logs || []);
+        } catch {
+            // User might not be admin — silently ignore
+            setAuditLogs([]);
+        } finally {
+            setActivityLoading(false);
         }
     }, [groupId]);
 
@@ -78,20 +158,25 @@ export default function GroupDetail() {
         if (groupId) fetchGroupData();
     }, [groupId, fetchGroupData]);
 
-    // Real-time updates via WebSocket
+    useEffect(() => {
+        if (activeTab === 'activity' && auditLogs.length === 0) {
+            fetchActivity();
+        }
+    }, [activeTab, fetchActivity, auditLogs.length]);
+
     useSocket({
         groupId,
-        onExpenseCreated: () => { toast.success('New expense added!'); fetchGroupData(); },
-        onExpenseAdjusted: () => { toast.success('Expense adjusted!'); fetchGroupData(); },
-        onSettlementCreated: () => { toast.success('New settlement created!'); fetchGroupData(); },
-        onSettlementPaid: () => { toast.success('Settlement updated!'); fetchGroupData(); },
+        onExpenseCreated: () => { toast('💰 New expense added', { icon: '↗' }); fetchGroupData(); },
+        onExpenseAdjusted: () => { toast('📝 Expense adjusted'); fetchGroupData(); },
+        onSettlementCreated: () => { toast('🤝 New settlement created'); fetchGroupData(); },
+        onSettlementPaid: () => { toast('✅ Settlement updated'); fetchGroupData(); },
     });
 
     const handleInvite = async (e: FormEvent) => {
         e.preventDefault();
         try {
             await api.post(`/groups/${groupId}/invite`, { email: inviteEmail });
-            toast.success('Member invited!');
+            toast.success('Member invited');
             setInviteEmail('');
             setShowInvite(false);
             fetchGroupData();
@@ -110,96 +195,136 @@ export default function GroupDetail() {
             document.body.appendChild(link);
             link.click();
             link.remove();
-            toast.success('CSV exported!');
+            toast.success('CSV exported');
         } catch {
             toast.error('Export failed');
         }
     };
 
-    if (loading) return <div className="loading">Loading group...</div>;
-    if (!group) return <div className="loading">Group not found</div>;
+    if (loading) {
+        return (
+            <div className="group-detail">
+                <div className="skeleton skeleton-text w-40" style={{ height: 14, marginBottom: 8 }} />
+                <div className="skeleton skeleton-text w-60" style={{ height: 28, marginBottom: 24 }} />
+                <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
+                    {[1, 2, 3].map(i => <div key={i} className="skeleton" style={{ width: 80, height: 28, borderRadius: 100 }} />)}
+                </div>
+                <div className="skeleton" style={{ height: 40, marginBottom: 24 }} />
+                {[1, 2, 3, 4].map(i => <div key={i} className="skeleton skeleton-row" />)}
+            </div>
+        );
+    }
+
+    if (!group) {
+        return (
+            <div className="empty-state">
+                <span className="empty-state-icon">🔍</span>
+                <p>Group not found</p>
+            </div>
+        );
+    }
 
     return (
         <div className="group-detail">
             <div className="group-detail-header">
                 <div>
-                    <Link to="/" className="back-link">← Back to Dashboard</Link>
+                    <Link to="/" className="back-link">← Dashboard</Link>
                     <h1>{group.name}</h1>
                     <span className="group-type-badge">{group.type}</span>
                 </div>
                 <div className="header-actions">
-                    <button className="btn btn-outline btn-sm" onClick={handleExport}>📥 Export CSV</button>
-                    <button className="btn btn-outline btn-sm" onClick={() => setShowInvite(true)}>👥 Invite</button>
-                    <Link to={`/groups/${groupId}/add-expense`} className="btn btn-primary btn-sm">+ Add Expense</Link>
+                    <button className="btn btn-outline btn-sm" onClick={handleExport}>Export CSV</button>
+                    <button className="btn btn-outline btn-sm" onClick={() => setShowInvite(true)}>Invite</button>
+                    <Link to={`/groups/${groupId}/add-expense`} className="btn btn-primary btn-sm">+ Expense</Link>
                 </div>
             </div>
 
-            {/* Members */}
             <div className="members-bar">
                 {members.map((m) => (
                     <span key={m.user_id} className="member-chip">
-                        {m.user_name} {m.role === 'admin' && '⭐'}
+                        {m.user_name}{m.role === 'admin' ? ' ★' : ''}
                     </span>
                 ))}
             </div>
 
-            {/* Tabs */}
             <div className="tabs">
-                <button className={`tab ${activeTab === 'expenses' ? 'active' : ''}`} onClick={() => setActiveTab('expenses')}>
-                    Expenses
-                </button>
-                <button className={`tab ${activeTab === 'balances' ? 'active' : ''}`} onClick={() => setActiveTab('balances')}>
-                    Balances
-                </button>
-                <button className={`tab ${activeTab === 'settlements' ? 'active' : ''}`} onClick={() => setActiveTab('settlements')}>
-                    Settlements
-                </button>
+                {(['expenses', 'balances', 'settlements'] as TabType[]).map(tab => (
+                    <button
+                        key={tab}
+                        className={`tab ${activeTab === tab ? 'active' : ''}`}
+                        onClick={() => setActiveTab(tab)}
+                    >
+                        {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    </button>
+                ))}
+                {isAdmin && (
+                    <button
+                        className={`tab ${activeTab === 'activity' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('activity')}
+                    >
+                        Activity
+                    </button>
+                )}
             </div>
 
-            {/* Tab Content */}
+            {/* Expenses Tab */}
             {activeTab === 'expenses' && (
                 <div className="expenses-list">
                     {expenses.length === 0 ? (
-                        <div className="empty-state"><p>No expenses yet</p></div>
+                        <div className="empty-state">
+                            <span className="empty-state-icon">📋</span>
+                            <p>No expenses yet. Tap "+ Expense" to add the first one.</p>
+                        </div>
                     ) : (
                         expenses.map((exp) => (
                             <div key={exp.id} className={`expense-item ${exp.entry_type === 'adjustment' ? 'adjustment' : ''}`}>
                                 <div className="expense-info">
                                     <h4>{exp.description}</h4>
-                                    <p>Paid by {exp.payer_name} · {exp.split_type} split</p>
-                                    <span className="expense-date">{formatDate(exp.created_at)}</span>
+                                    <p>Paid by {exp.payer_name} · {exp.split_type}</p>
                                 </div>
-                                <div className="expense-amount">{formatCurrency(exp.amount)}</div>
+                                <div style={{ textAlign: 'right' }}>
+                                    <div className="expense-amount">{formatCurrency(exp.amount)}</div>
+                                    <span className="expense-date">{timeAgo(exp.created_at)}</span>
+                                </div>
                             </div>
                         ))
                     )}
                 </div>
             )}
 
+            {/* Balances Tab */}
             {activeTab === 'balances' && (
                 <div className="balances-list">
-                    {balances.map((b) => (
-                        <div key={b.userId} className="balance-item">
-                            <span className="balance-name">{b.name}</span>
-                            <span className={`balance-amount ${b.netBalance >= 0 ? 'positive' : 'negative'}`}>
-                                {b.netBalance >= 0 ? 'gets back' : 'owes'} {formatCurrency(Math.abs(b.netBalance))}
-                            </span>
-                        </div>
-                    ))}
+                    {balances.length === 0 ? (
+                        <div className="empty-state"><p>No balances to show</p></div>
+                    ) : (
+                        balances.map((b) => (
+                            <div key={b.userId} className="balance-item">
+                                <span className="balance-name">{b.name}</span>
+                                <span className={`balance-amount ${b.netBalance >= 0 ? 'positive' : 'negative'}`}>
+                                    {b.netBalance >= 0 ? '+' : ''}{formatCurrency(b.netBalance)}
+                                </span>
+                            </div>
+                        ))
+                    )}
                 </div>
             )}
 
+            {/* Settlements Tab */}
             {activeTab === 'settlements' && (
                 <div className="settlements-list">
                     {settlements.length === 0 ? (
-                        <div className="empty-state"><p>All settled up! 🎉</p></div>
+                        <div className="empty-state">
+                            <span className="empty-state-icon">✅</span>
+                            <p>All settled up!</p>
+                        </div>
                     ) : (
                         settlements.map((s, i) => (
                             <div key={i} className="settlement-item">
                                 <div className="settlement-info">
-                                    <span className="settlement-from">{s.fromName}</span>
+                                    <span>{s.fromName}</span>
                                     <span className="settlement-arrow">→</span>
-                                    <span className="settlement-to">{s.toName}</span>
+                                    <span>{s.toName}</span>
                                 </div>
                                 <span className="settlement-amount">{formatCurrency(s.amount)}</span>
                                 <Link
@@ -210,6 +335,36 @@ export default function GroupDetail() {
                                 </Link>
                             </div>
                         ))
+                    )}
+                </div>
+            )}
+
+            {/* Activity Tab (Admin Only) */}
+            {activeTab === 'activity' && (
+                <div>
+                    {activityLoading ? (
+                        <div>
+                            {[1, 2, 3, 4, 5].map(i => (
+                                <div key={i} className="skeleton skeleton-row" />
+                            ))}
+                        </div>
+                    ) : auditLogs.length === 0 ? (
+                        <div className="empty-state">
+                            <span className="empty-state-icon">📜</span>
+                            <p>No activity recorded yet</p>
+                        </div>
+                    ) : (
+                        <div className="activity-feed">
+                            {auditLogs.map((log) => {
+                                const { text, actionClass } = describeAuditAction(log);
+                                return (
+                                    <div key={log.id} className={`activity-item ${actionClass}`}>
+                                        <div className="activity-meta">{timeAgo(log.created_at)}</div>
+                                        <div className="activity-content" dangerouslySetInnerHTML={{ __html: text }} />
+                                    </div>
+                                );
+                            })}
+                        </div>
                     )}
                 </div>
             )}

@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -13,7 +13,7 @@ export default function Profile() {
         setLoading(true);
         try {
             await updateProfile({ name, upiId });
-            toast.success('Profile updated!');
+            toast.success('Profile updated');
         } catch (err: any) {
             toast.error(err.response?.data?.error || 'Update failed');
         } finally {
@@ -50,7 +50,7 @@ export default function Profile() {
                     />
                 </div>
                 <button type="submit" className="btn btn-primary" disabled={loading}>
-                    {loading ? 'Saving...' : 'Save Changes'}
+                    {loading ? 'Saving…' : 'Save Changes'}
                 </button>
             </form>
         </div>

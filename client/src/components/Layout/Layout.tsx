@@ -5,25 +5,32 @@ export default function Layout() {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
 
-    const handleLogout = () => {
-        logout();
+    const handleLogout = async () => {
+        await logout();
         navigate('/login');
     };
+
+    const initials = user?.name
+        ? user.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+        : '';
 
     return (
         <div className="app">
             <nav className="navbar">
                 <div className="nav-brand">
-                    <Link to="/">💰 SplitKaro</Link>
+                    <Link to="/">SplitKaro</Link>
                 </div>
                 <div className="nav-links">
                     {user && (
                         <>
                             <Link to="/" className="nav-link">Dashboard</Link>
                             <Link to="/profile" className="nav-link">Profile</Link>
-                            <button onClick={handleLogout} className="btn btn-outline btn-sm">
-                                Logout
-                            </button>
+                            <div className="nav-user">
+                                <span className="nav-avatar">{initials}</span>
+                                <button onClick={handleLogout} className="btn btn-outline btn-sm">
+                                    Logout
+                                </button>
+                            </div>
                         </>
                     )}
                 </div>
